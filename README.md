@@ -1,5 +1,5 @@
 # sdram_core
-
+```
   Name         :sdram_core.v
   Description  :a simple SDRAM controller in page burst mode;固定的初始化后，用户设置起始
                 bank、行、列地址，进行固定长度连续单页读写，到达规定个数(wr_num)，该模块将
@@ -13,4 +13,4 @@
                 190122
   Author       :helrori2011@gmail.com
   Reference    :github.com/stffrdhrn/sdram-controller
-
+```

@@ -1,10 +1,14 @@
 /*******************************************************************************************
 *  Name         :sdram_core.v
-*  Description  :a simple SDRAM controller in page burst mode;固定的初始化后，用户设置起始
-*                bank、行、列地址，进行固定长度连续单页读写，到达规定个数(wr_num)，该模块将
-*                给出信号。注意：该模块仅读取单页(一行，读写字数可控,需要读取另一行，必更
-*                换地址)。该模块将SDRAM当成显存来用(为了配合VGA)。不支持随机读写。该模块不
-*                含FIFO。CAS==3;clk leads the 80 degree of sdram_clk(Different results
+*  Description  :a simple SDRAM controller in full page burst mode,该模块意指在使用最简单的
+*                状态转换机的前提下完成CMOS->VGA的图像缓存任务，SDRAM设置为简单的全页读写模
+*                式，由于中间不能被refresh打断，为保证最短刷新时间，读写前后都有 失选和刷
+*                新。读写个数越大效率越高，但不能超过列数; 流程 : 固定的初始化后，用户设置起
+*                始bank、行、列地址，发送请求进行固定长度连续单页读写(请求必然导致读写操作！
+*                即发一次写请求后用户必须依照wr_allow信号去写一次...)，到达规定个数(wr_num)，
+*                该模块将给出信号。注意：该模块仅读取单页(一行，读写字数可控,需要读取另一行，
+*                必更换地址)。该模块将SDRAM当成显存来用。不支持随机读写。该模块
+*                不含FIFO。CAS==3;clk leads the 80 degree of sdram_clk(Different results
 *                for different boards).Recommended sdram_clk phase shift -80 degrees.
 *                Note:xx_request effective time should less than 8 clk,and do not Repeat 
 *                xx_request until xx_allow finished.wr_data no pre-fetch need!
@@ -47,18 +51,21 @@ parameter   _CLK_LEAD_TIME_ = TSU-TOH+(TT-TAC+TOH)/2     //(ns)  clk leads the _
     input   wire    rst_n,
     //HOST
     input   wire    [HADDR_WIDTH-1:0]wr_addr,       //{bank_addr,row_addr,col_addr}
-    input   wire    [COL_WIDTH    :0]wr_num,//1024  //写入这行的字数(请小于2^COL_WIDTH,一般小于等于512)
-    input   wire    wr_request,                     //Effective time should less than 8,and do not Repeat request until wr_allow finished.wr_request最后一个时钟高电平时wr_addr,wr_num将被写入。
+    input   wire    [COL_WIDTH    :0]wr_num,//1024  //写入这行的字数(请 <= 2^COL_WIDTH,一般小于等于512)
+    input   wire    wr_request,                     //Effective time should less than 8,and do not Repeat request until wr_busy==0.
     input   wire    [15:0]wr_data,                  //XXXXXXXX| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |XXXX
-    output  reg     wr_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|________
- 
+    output  reg     wr_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|_______________
+    output  wire    wr_busy,                        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____
+    
     input   wire    [HADDR_WIDTH-1:0]rd_addr,       //{bank_addr,row_addr,col_addr}
-    input   wire    [COL_WIDTH    :0]rd_num,//1024  //读取这行的字数(请 <= 2^COL_WIDTH)
-    input   wire    rd_request,                     //Effective time should less than 8,and do not Repeat request until rd_allow finished.rd_request最后一个时钟高电平时rd_addr,wr_num将被写入。
+    input   wire    [COL_WIDTH    :0]rd_num,//1024  //读取这行的字数(请 <= 2^COL_WIDTH,一般小于等于512)
+    input   wire    rd_request,                     //Effective time should less than 8,and do not Repeat request until rd_busy==0.
     output  reg     [15:0]rd_data,                  //XXXX| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |XXXX
-    output  reg     rd_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____
+    output  reg     rd_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|_______________
+    output  wire    rd_busy,                        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____
+    
     //TEST
-    output  wire    busy,                    //测试用，不要使用该信号决定读写，请使用rd_allow,wr_allow
+    output  reg     busy,                           //(或者用户在xx_allow后等待20clk)
     output  reg     state_fly_error,
     //SDRAM
     output  wire    [ROW_WIDTH-1    :  0]sdram_addr     ,//(init,read,write)
@@ -139,34 +146,36 @@ end
 /*******************************************************************************************
 *   state machine
 *******************************************************************************************/ 
-localparam TDLY         = 5'b00000,
-           INIT_NOP1    = 5'b00001,
-           PRECHARGE    = 5'b00011,
-           TRP          = 5'b00010,
-           REFRESH1     = 5'b00110,
-           TRFC1        = 5'b00111,
-           REFRESH2     = 5'b00101,
-           TRFC2        = 5'b01101,
-           LMR          = 5'b01100,
-           TMRD         = 5'b01110,
+localparam TDLY         = 5'd0,
+           INIT_NOP1    = 5'd1,
+           PRECHARGE    = 5'd2,
+           TRP          = 5'd3,
+           REFRESH1     = 5'd4,
+           TRFC1        = 5'd5,
+           REFRESH2     = 5'd6,
+           TRFC2        = 5'd7,
+           LMR          = 5'd8,
+           TMRD         = 5'd9,
            
-           IDLE         = 5'b11111,
+           IDLE         = 5'd10,
            
-           PRECHARGE2   = 5'b11100,
-           TRP2         = 5'b11101,
-           REFRESH3     = 5'b11001,
-           TRFC3        = 5'b11011,
+           PRECHARGE2   = 5'd11,
+           TRP2         = 5'd12,
+           REFRESH3     = 5'd13,
+           TRFC3        = 5'd14,
            
-           ACTIVE1      = 5'b10000,
-           TRCD1        = 5'b10001,      
-           READ         = 5'b10011,
-           RD_WORD      = 5'b10010, 
+           ACTIVE1      = 5'd15,
+           TRCD1        = 5'd16,      
+           READ         = 5'd17,
+           RD_WORD      = 5'd18, 
 
-           ACTIVE2      = 5'b10100,
-           WR_WORD      = 5'b10101;  
+           ACTIVE2      = 5'd19,
+           WR_WORD      = 5'd20;  
            
-reg     [4:0 ]state,nxt_state,state_before;
-reg     nxt_rd_flag,nxt_wr_flag,rd_flag,wr_flag;
+reg     [4:0 ]state,nxt_state;
+reg     [1 :0]nxt_rd_flag,nxt_wr_flag,rd_flag,wr_flag;
+assign  wr_busy = wr_flag[0];
+assign  rd_busy = rd_flag[0];
 reg     [15:0]dly_cnt; 
 reg     [7 :0]ck_cnt; 
 reg     [13:0]refresh_cnt;
@@ -175,10 +184,15 @@ wire    [15:0]data_o;           //FPGA->SDRAM
 wire    data_output =   state == WR_WORD;
 assign  data_o      =   wr_data;//WR_WORD 时 wr_data 直通到SDRAM数据脚,请在 wr_allow写数据(no pre-fetch need)
 assign  sdram_data  =   (data_output)?data_o:16'dz;//仅当写SDRAM时才不是高阻
-assign  busy        =   state != IDLE ;
-
-
-
+/*
+*   busy signal for test
+*/  
+always@(posedge clk or negedge rst_n)begin
+    if(!rst_n)begin
+        busy <= 'd0;
+    end 
+        busy <= state != IDLE;
+end
 /*
 *   refresh counter
 */  
@@ -197,22 +211,21 @@ end
 always@(posedge clk or negedge rst_n)begin
     if(!rst_n)begin
         state       <=  TDLY;
-        state_before<=  'd0;
-        rd_flag     <=  1'd0;
-        wr_flag     <=  1'd0;
+        rd_flag     <=  'd0;
+        wr_flag     <=  'd0;
         dly_cnt     <=  'd0;
         ck_cnt      <=  'd0;
         word_cnt    <=  'd0;
-        sdram_cmd   <=  CMD_NOP;
+        sdram_cmd   <=   CMD_NOP;
         BA_A        <=  'd0;
         rd_data     <=  'd0;
         rd_allow    <=   1'd0;
         wr_allow    <=   1'd0;
+        state_fly_error <= 1'd0;
     end else begin
         state       <= nxt_state;
         rd_flag     <= nxt_rd_flag;
         wr_flag     <= nxt_wr_flag;
-        state_before<= state;
         case(nxt_state)
 // INIT //------------------------------------------------------------------------
         TDLY:begin
@@ -262,6 +275,7 @@ always@(posedge clk or negedge rst_n)begin
         end
 //REFRESH//------------------------------------------------------------------------
         PRECHARGE2:begin
+            ck_cnt      <= 'd0;
             sdram_cmd   <=  CMD_PRECHARGE;
             BA_A[10]    <=  1'd1;           //Precharge all banks
         end
@@ -276,7 +290,7 @@ always@(posedge clk or negedge rst_n)begin
         TRFC3:begin
             ck_cnt      <=  ck_cnt + 1'd1;
             sdram_cmd   <=  CMD_NOP;
-        end
+        end//->IDLE/ACTIVE1/ACTIVE2
 //READ //------------------------------------------------------------------------
         ACTIVE1:begin
             ck_cnt      <= 'd0;
@@ -301,17 +315,18 @@ always@(posedge clk or negedge rst_n)begin
                 sdram_cmd   <=  CMD_NOP;
             end
             //make rd_allow
-            if(word_cnt == 3)//***caution!!***//CAS3
+            if(word_cnt == 3)//***caution!!***这里的取值实际与仿真有出入，按照理论这里的取值应等于CAS，实际在板调试取值等于CAS即可,仿真MT的模型取CAS-1
                 rd_allow <= 1'd1;
-            else if(word_cnt == 3 + rd_num_b)//***caution!!***//CAS3
+            else if(word_cnt == 3 + rd_num_b)//***caution!!***这里的取值实际与仿真有出入，按照理论这里的取值应等于CAS+rd_num_b,仿真MT的模型取CAS-1+rd_num_b
                 rd_allow <= 1'd0;
             else
                 rd_allow <= rd_allow;
             //寄存,注意RD_WORD&&rd_allow时rd_data数据有效，RD_WORD的其他时候高阻
             rd_data <= sdram_data;
-            
-            
         end
+            
+            
+
 //WRITE//------------------------------------------------------------------------
         ACTIVE2:begin
             sdram_cmd   <=  CMD_ACTIVE;
@@ -387,10 +402,7 @@ always@(*)begin
         end
 // IDLE //------------------------------------------------------------------------
         IDLE:begin
-            if(refresh_cnt  >  CK_REFRESH_TICK //读写完毕后也要刷新(precharge and refresh after rd/wr)
-            || state_before == RD_WORD 
-            || state_before == WR_WORD
-            )begin
+            if(refresh_cnt  >  CK_REFRESH_TICK)begin
                 nxt_state = PRECHARGE2;
             end else if(rd_request_b)begin//读写之前也要刷新(precharge and refresh before rd/wr)
             //1.注意：rd_request优先，这说明：当不间断读请求时(在 rd_allow 下降沿后，且 
@@ -400,11 +412,13 @@ always@(*)begin
             //2.rd_request_b,wr_request_b同时置位时，读优先。
             //3.建议读写请求在allow信号变0后 且 busy变0后(IDLE后)给出，不会有写操作被
             //  搁置的情况，但要注意同时读写时 读优先。
-                nxt_state   = PRECHARGE2;///
-                nxt_rd_flag = 1'd1;///
+                nxt_state   = PRECHARGE2;
+                nxt_rd_flag[0] = 1'd1;
+                nxt_rd_flag[1] = 1'd1;
             end else if(wr_request_b)begin
                 nxt_state = PRECHARGE2;
-                nxt_wr_flag = 1'd1;///
+                nxt_wr_flag[0] = 1'd1;
+                nxt_wr_flag[1] = 1'd1;
             end else begin
                 nxt_state = IDLE;
             end
@@ -421,17 +435,20 @@ always@(*)begin
         end
         TRFC3:begin
             if(ck_cnt == CK_TRFC)begin
-                if(rd_flag)
+                if(rd_flag[1])
                     nxt_state = ACTIVE1;
-                else if(wr_flag)
+                else if(wr_flag[1])
                     nxt_state = ACTIVE2;
-                else 
+                else begin
                     nxt_state = IDLE;
+                    nxt_rd_flag[0] = 1'd0;
+                    nxt_wr_flag[0] = 1'd0;
+                end
             end else begin
                 nxt_state = TRFC3;
             end
         end
-//READ //------------------------------------------------------------------------进入前请确保已经失选(disactive),计数器皆为0
+//READ //------------------------------------------------------------------------进入前请确保已经失选(disactive),计数器word_cnt为0
         ACTIVE1:begin
             nxt_state = TRCD1;
         end
@@ -441,17 +458,19 @@ always@(*)begin
         READ:begin
             nxt_state = RD_WORD;
         end
-        RD_WORD:begin//原本应是3个CAS NOP然后读512字、发BSTP。这里直接与后边合并
-            nxt_state = (word_cnt == rd_num_b + 3 + 2)?IDLE:RD_WORD;//RD_WORD持续rd_num + 3(CAS==3) + 2个周期,最后5个是NOP,可以增大
-            nxt_rd_flag = 1'd0;///
+        RD_WORD:begin//原本应是3个CAS NOP然后读512字、发BSTP。这里直接与后边合并//读写完毕后也要刷新
+            nxt_state = (word_cnt == rd_num_b + 3 + 2)?PRECHARGE2:RD_WORD;//RD_WORD持续rd_num + 3(CAS==3) + 2个周期,最后5个是NOP,2:可以增大也可为0
+            nxt_rd_flag[1] = 1'd0;
         end
-//WRITE//------------------------------------------------------------------------进入前请确保已经失选(disactive),计数器皆为0
+        
+        
+//WRITE//------------------------------------------------------------------------进入前请确保已经失选(disactive),计数器word_cnt为0
         ACTIVE2:begin
             nxt_state = WR_WORD;
         end
         WR_WORD:begin//The operations following ACTIVE are all merged
-            nxt_state = (word_cnt == CK_TRCD + wr_num_b + 1 + CK_TWR)?IDLE:WR_WORD;//
-            nxt_wr_flag = 1'd0;///
+            nxt_state = (word_cnt == CK_TRCD + wr_num_b + 1 + CK_TWR)?PRECHARGE2:WR_WORD;//读写完毕后也要刷新
+            nxt_wr_flag[1] = 1'd0;
         end
     default:nxt_state = TDLY;
     endcase

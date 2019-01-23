@@ -57,11 +57,15 @@ initial begin
     wr_request = 1;#(`TT*1) wr_request = 0;
     #(`TT*1250)
     
-    //write 
+    //write read in same time for 3 times
     row_addr = 1;
     bank_addr= 1;
     #(`TT*1250)
-    wr_request = 1;#(`TT*1) wr_request = 0;
+    wr_request = 1;rd_request = 1;#(`TT*1) wr_request = 0;rd_request = 0;
+    #(`TT*100)
+    wr_request = 1;rd_request = 1;#(`TT*1) wr_request = 0;rd_request = 0;
+    #(`TT*100)
+    wr_request = 1;rd_request = 1;#(`TT*1) wr_request = 0;rd_request = 0;
     #(`TT*1250)   
     
     
@@ -78,6 +82,34 @@ initial begin
     #(`TT*1250)
     rd_request = 1;#(`TT*1) rd_request = 0;
     #(`TT*1250)   
+    
+    //write when read request 
+    #(`TT*1250)
+    wr_request = 1;#(`TT*1) wr_request = 0;
+    #(`TT*0)
+    rd_request = 1;#(`TT*1) rd_request = 0;
+    #(`TT*1250)
+    //read when write request 
+    #(`TT*1250)
+    rd_request = 1;#(`TT*1) rd_request = 0;
+    #(`TT*0)
+    wr_request = 1;#(`TT*1) wr_request = 0;
+    #(`TT*1250)
+    //write and read in same time ,and next read in illegal area
+    wr_request = 1;rd_request = 1;#(`TT*1) wr_request = 0;rd_request = 0;
+    #(`TT*34)
+    rd_request = 1;#(`TT*1) rd_request = 0;
+    #(`TT*34)
+    rd_request = 1;#(`TT*1) rd_request = 0;
+    #(`TT*1250)
+    //read when write request,and read in illegal area
+    wr_request = 1;#(`TT*1) wr_request = 0;
+    #(`TT*32)
+    wr_request = 1;#(`TT*1) wr_request = 0;  
+    #(`TT*2)
+    rd_request = 1;#(`TT*1) rd_request = 0;
+    #(`TT*1250)
+    
     $finish;
     
 
@@ -98,13 +130,13 @@ sdram_core  sdram_core_0
     .rst_n(rst_n),
     
     .wr_addr({bank_addr,row_addr,col_addr}),//{bank_addr,row_addr,col_addr}
-    .wr_num(10'd8),
+    .wr_num(10'd4),
     .wr_data(wr_data),           //only 16bits
     .wr_request(wr_request),              //user发出写请求，此时wr_addr将被写入。进入写状态
     .wr_allow(wr_allow),                //enbale:@posedge clk,data<=wr_data
  
     .rd_addr({bank_addr,row_addr,col_addr}),//{bank_addr,row_addr,col_addr}
-    .rd_num(10'd8),
+    .rd_num(10'd4),
     .rd_data(rd_data),           //only 16bits
     .rd_request(rd_request),              //user发出写请求，此时rd_addr将被写入。进入读状态
     .rd_allow(rd_allow),                //enbale:@posedge clk,rd_data<=data

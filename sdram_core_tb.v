@@ -1,6 +1,13 @@
+/*******************************************************************************************
+*  Name         :sdram_core_tb.v
+*  Description  :
+*  Origin       :190123
+*  Author       :helrori2011@gmail.com
+*  Reference    :
+********************************************************************************************/
 `timescale 1 ns / 100 ps
 `define TT  10
-`define DEG 80.0//clk 超前clk_ref的度数 clk leads the degree of clk_ref
+`define DEG 80.0//clk_ref 超前clk的度数 clk_ref leads the degree of clk
 //DEG 
 module sdram_core_tb();
 reg     clk,clk_ref,rst_n;
@@ -34,14 +41,14 @@ wire    [15:0]sdram_data;
 //wire       #(`TT*(`DEG/360)) clk;
 //assign     clk_ref = clk;
 initial begin 
-    clk_ref = 1;
+    clk = 1;
     #(`TT*(`DEG/360.0))
-    forever #(`TT/2)  clk_ref = ~clk_ref ;
+    forever #(`TT/2)  clk = ~clk ;
 end 
 initial begin
     $dumpfile("wave.vcd");              //for iverilog gtkwave.exe
-    $dumpvars(0,sdram_core_tb);           //for iverilog select signal   
-    clk = 1;
+    $dumpvars(0,sdram_core_tb);         //for iverilog select signal   
+    clk_ref = 1;
     rst_n = 1;
     wr_request = 0;
     rd_request = 0;
@@ -116,7 +123,7 @@ initial begin
     
 end
 
-always begin #(`TT/2)clk = ~clk; end
+always begin #(`TT/2)clk_ref = ~clk_ref; end
 always@(posedge clk or negedge rst_n)begin
     if(!rst_n)
         wr_data<=16'haaaa;
@@ -129,27 +136,27 @@ sdram_core  sdram_core_0
     .clk_ref(clk_ref),
     .rst_n(rst_n),
     
-    .wr_addr({bank_addr,row_addr,col_addr}),//{bank_addr,row_addr,col_addr}
+    .wr_addr({bank_addr,row_addr,col_addr}),    //{bank_addr,row_addr,col_addr}
     .wr_num(10'd4),
-    .wr_data(wr_data),           //only 16bits
-    .wr_request(wr_request),              //user发出写请求，此时wr_addr将被写入。进入写状态
-    .wr_allow(wr_allow),                //enbale:@posedge clk,data<=wr_data
+    .wr_data(wr_data),                          //only 16bits
+    .wr_request(wr_request),                    //user发出写请求，此时wr_addr将被写入。进入写状态
+    .wr_allow(wr_allow),                        //enbale:@posedge clk,data<=wr_data
  
-    .rd_addr({bank_addr,row_addr,col_addr}),//{bank_addr,row_addr,col_addr}
+    .rd_addr({bank_addr,row_addr,col_addr}),    //{bank_addr,row_addr,col_addr}
     .rd_num(10'd4),
-    .rd_data(rd_data),           //only 16bits
-    .rd_request(rd_request),              //user发出写请求，此时rd_addr将被写入。进入读状态
-    .rd_allow(rd_allow),                //enbale:@posedge clk,rd_data<=data
+    .rd_data(rd_data),                          //only 16bits
+    .rd_request(rd_request),                    //user发出写请求，此时rd_addr将被写入。进入读状态
+    .rd_allow(rd_allow),                        //enbale:@posedge clk,rd_data<=data
     
     .busy(),
  
-    .sdram_addr(sdram_addr)     ,//(init,read,write)
-    .sdram_bkaddr(sdram_bkaddr)   ,//(init,read,write)
-    .sdram_data(sdram_data)     ,//only 16bits (read,write)
+    .sdram_addr(sdram_addr)     ,               //(init,read,write)
+    .sdram_bkaddr(sdram_bkaddr)   ,             //(init,read,write)
+    .sdram_data(sdram_data)     ,               //only 16bits (read,write)
     .sdram_clk(sdram_clk)      ,
     
-    .sdram_cke(sdram_cke)      ,//always 1
-    .sdram_cs_n(sdram_cs_n)     ,//always 0
+    .sdram_cke(sdram_cke)      ,                //always 1
+    .sdram_cs_n(sdram_cs_n)     ,               //always 0
     .sdram_ras_n(sdram_ras_n)    ,
     .sdram_cas_n(sdram_cas_n)    ,
     .sdram_we_n(sdram_we_n)     ,

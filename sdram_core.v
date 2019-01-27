@@ -14,6 +14,7 @@
 *                xx_request until xx_allow finished.wr_data no pre-fetch need!
 *  Origin       :190119
 *                190122
+*                190124 - add init_done
 *  Author       :helrori2011@gmail.com
 *  Reference    :https://github.com/stffrdhrn/sdram-controller
 ********************************************************************************************/
@@ -25,8 +26,11 @@ parameter   BANK_WIDTH      = 2     ,
 parameter   CLK_FREQUENCY   = 100   ,  // (Mhz)
 parameter   REFRESH_TIME    = 64    ,  // (ms)     
 parameter   REFRESH_COUNT   = 8192  ,  // 2**ROW_WIDTH (how many refreshes required per refresh_time)
-
+`ifdef _DEBUG_
 parameter   CK_TDLY         = 20,//0_00,  //(clk),>200_000ns
+`else
+parameter   CK_TDLY         = 200_00,  //(clk),>200_000ns
+`endif
 parameter   CK_TRP          = 2     ,  //(clk) PRECHARGE command period,>=20ns
 parameter   CK_TRFC         = 7     ,  //(clk) AUTO REFRESH period,>=66ns
 parameter   CK_TMRD         = 2     ,  //(clk) LOAD MODE REGISTER command to ACTIVE or REFRESH command
@@ -64,6 +68,7 @@ parameter   _CLK_LEAD_TIME_ = TSU-TOH+(TT-TAC+TOH)/2     //(ns)  clk leads the _
     output  reg     rd_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|_______________
     output  wire    rd_busy,                        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____
     
+    output  wire    init_done,
     //TEST
     output  reg     busy,                           //(或者用户在xx_allow后等待20clk)
     output  reg     state_fly_error,
@@ -110,67 +115,35 @@ assign {wr_bank_addr_b,wr_row_addr_b,wr_col_addr_b} = wr_addr_b;//
 assign {sdram_bkaddr,sdram_addr} = BA_A;
 assign {sdram_cke,sdram_cs_n,sdram_ras_n,sdram_cas_n,sdram_we_n} = sdram_cmd;
 
-/*******************************************************************************************
-*   read & write request register
-*******************************************************************************************/ 
-always@(posedge clk or negedge rst_n)begin
-    if(!rst_n)begin
-        rd_addr_b   <= 'd0;
-        rd_num_b    <= 'd0;
-        rd_request_b<= 'd0;
-        wr_addr_b   <= 'd0;
-        wr_num_b    <= 'd0;
-        wr_request_b<= 'd0;
-    end else begin
-        if(rd_request)begin
-            rd_addr_b   <=  rd_addr;    //保存地址
-            rd_num_b    <=  rd_num;     //保存
-            rd_request_b<=  1'd1;       //保存请求
-        end else if(state == RD_WORD)
-            rd_request_b<=  1'd0;       //任务完成，撤回请求
-        else
-            rd_request_b<=  rd_request_b;
-            
-            
-        if(wr_request)begin
-            wr_addr_b   <=  wr_addr;    //保存地址
-            wr_num_b    <=  wr_num;     //保存
-            wr_request_b<=  1'd1;       //保存请求
-        end else if(state == WR_WORD)
-            wr_request_b<=  1'd0;       //任务完成，撤回请求
-        else
-            wr_request_b<=  wr_request_b;
-    end
-end
 
 /*******************************************************************************************
 *   state machine
 *******************************************************************************************/ 
-localparam TDLY         = 5'd0,
-           INIT_NOP1    = 5'd1,
-           PRECHARGE    = 5'd2,
-           TRP          = 5'd3,
-           REFRESH1     = 5'd4,
-           TRFC1        = 5'd5,
-           REFRESH2     = 5'd6,
-           TRFC2        = 5'd7,
-           LMR          = 5'd8,
-           TMRD         = 5'd9,
+localparam TDLY         = 5'h10,
+           INIT_NOP1    = 5'h11,
+           PRECHARGE    = 5'h12,
+           TRP          = 5'h13,
+           REFRESH1     = 5'h14,
+           TRFC1        = 5'h15,
+           REFRESH2     = 5'h16,
+           TRFC2        = 5'h17,
+           LMR          = 5'h18,
+           TMRD         = 5'h19,
            
-           IDLE         = 5'd10,
+           IDLE         = 5'h00,
            
-           PRECHARGE2   = 5'd11,
-           TRP2         = 5'd12,
-           REFRESH3     = 5'd13,
-           TRFC3        = 5'd14,
+           PRECHARGE2   = 5'h01,
+           TRP2         = 5'h02,
+           REFRESH3     = 5'h03,
+           TRFC3        = 5'h04,
            
-           ACTIVE1      = 5'd15,
-           TRCD1        = 5'd16,      
-           READ         = 5'd17,
-           RD_WORD      = 5'd18, 
+           ACTIVE1      = 5'h0A,
+           TRCD1        = 5'h0B,      
+           READ         = 5'h0C,
+           RD_WORD      = 5'h0D, 
 
-           ACTIVE2      = 5'd19,
-           WR_WORD      = 5'd20;  
+           ACTIVE2      = 5'h0E,
+           WR_WORD      = 5'h0F;  
            
 reg     [4:0 ]state,nxt_state;
 reg     [1 :0]nxt_rd_flag,nxt_wr_flag,rd_flag,wr_flag;
@@ -184,6 +157,7 @@ wire    [15:0]data_o;           //FPGA->SDRAM
 wire    data_output =   state == WR_WORD;
 assign  data_o      =   wr_data;//WR_WORD 时 wr_data 直通到SDRAM数据脚,请在 wr_allow写数据(no pre-fetch need)
 assign  sdram_data  =   (data_output)?data_o:16'dz;//仅当写SDRAM时才不是高阻
+assign  init_done   =   ~state[4];
 /*
 *   busy signal for test
 */  
@@ -477,7 +451,36 @@ always@(*)begin
     
 end
 /*******************************************************************************************
-*   
+*   read & write request register
 *******************************************************************************************/ 
+always@(posedge clk or negedge rst_n)begin
+    if(!rst_n)begin
+        rd_addr_b   <= 'd0;
+        rd_num_b    <= 'd0;
+        rd_request_b<= 'd0;
+        wr_addr_b   <= 'd0;
+        wr_num_b    <= 'd0;
+        wr_request_b<= 'd0;
+    end else begin
+        if(rd_request)begin
+            rd_addr_b   <=  rd_addr;    //保存地址
+            rd_num_b    <=  rd_num;     //保存
+            rd_request_b<=  1'd1;       //保存请求
+        end else if(state == RD_WORD)
+            rd_request_b<=  1'd0;       //任务完成，撤回请求
+        else
+            rd_request_b<=  rd_request_b;
+            
+            
+        if(wr_request)begin
+            wr_addr_b   <=  wr_addr;    //保存地址
+            wr_num_b    <=  wr_num;     //保存
+            wr_request_b<=  1'd1;       //保存请求
+        end else if(state == WR_WORD)
+            wr_request_b<=  1'd0;       //任务完成，撤回请求
+        else
+            wr_request_b<=  wr_request_b;
+    end
+end
           
 endmodule

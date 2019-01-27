@@ -14,7 +14,11 @@
   Author       :helrori2011@gmail.com
   Reference    :github.com/stffrdhrn/sdram-controller
 ```
+read 4 words
 ![read 4 words](https://github.com/Elrori/sdram_core/blob/master/rd.png)
+write 4 words
 ![write 4 words](https://github.com/Elrori/sdram_core/blob/master/wr.png)
+rd_wr_in_same_tim
 ![rd_wr_in_same_time](https://github.com/Elrori/sdram_core/blob/master/rd_wr_in_same_time.png)
+read to write
 ![read to write](https://github.com/Elrori/sdram_core/blob/master/rd2wr.png)

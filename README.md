@@ -36,14 +36,14 @@ HOST interface
     input   wire    wr_request,                     //_|~|____________________________________________//Effective time should less than 8,and do not Repeat request until wr_busy==0.
     input   wire    [15:0]wr_data,                  //XXXXXXXX| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |XXXX
     output  reg     wr_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____________
-    output  wire    wr_busy,                        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|___
+    output  wire    wr_busy,                        //_|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|__
     
     input   wire    [HADDR_WIDTH-1:0]rd_addr,       //{bank_addr,row_addr,col_addr}
     input   wire    [COL_WIDTH    :0]rd_num,//1024  //读取这行的字数(pls <= 2^COL_WIDTH,一般小于等于512)
     input   wire    rd_request,                     //_|~|____________________________________________//Effective time should less than 8,and do not Repeat request until rd_busy==0.
     output  reg     [15:0]rd_data,                  //XXXX| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |XXXX
     output  reg     rd_allow,                       //____|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|____________
-    output  wire    rd_busy,                        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|___
+    output  wire    rd_busy,                        //_|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|__
     output  wire    init_done,
 ```
 

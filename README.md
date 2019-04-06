@@ -27,14 +27,12 @@ Note:
 1. CAS 3,32MB,16-bit data,operates at 100Mhz in full page burst mode.
 
 2. My devices:ep4ce10,H57V2562GTR.(/sdram_core/quartus contains a test project)
+             
+3. xx_request effective time should less than 8 clk,and do not Repeat xx_request until xx_busy deasserted.
 
-3. Recommended sdram_clk phase shift -80 degrees.
+4. wr_xxx and rd_xxx independent.
                 
-4. xx_request effective time should less than 8 clk,and do not Repeat xx_request until xx_busy deasserted.
-
-5. wr_xxx and rd_xxx independent.
-                
-6. wr_data no pre-fetch need.
+5. wr_data no pre-fetch need.
 
 HOST interface
 --------------

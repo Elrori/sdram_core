@@ -42,7 +42,7 @@ pll pll_0
 	.areset(~rst_n),
 	.inclk0(clk_50M),
 	.c0(clk_100M),
-	.c1(clk_ref),
+	.c1(S_CLK),
 	.c2(clk_200M),
 	.locked(rst_n_)
 );
@@ -89,7 +89,7 @@ always@(posedge clk_100M or negedge rst_n_)
 sdram_core  sdram_core_0
 (
     .clk(clk_100M),
-    .clk_ref(clk_ref),
+    .clk_ref(),
     .rst_n(rst_n_),
     
     .wr_addr({2'd1,row_addr,9'd0}),//{bank_addr,row_addr,col_addr}
@@ -110,7 +110,7 @@ sdram_core  sdram_core_0
     .sdram_addr(S_ADDR)     ,//(init,read,write)
     .sdram_bkaddr(S_BA)   ,//(init,read,write)
     .sdram_data(S_DQ)     ,//only 16bits (read,write)
-    .sdram_clk(S_CLK)      ,
+    .sdram_clk()      ,
     
     .sdram_cke(S_CKE)      ,//always 1
     .sdram_cs_n(S_CS_N)     ,//always 0
